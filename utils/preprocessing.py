@@ -43,7 +43,7 @@ def preprocess_data(df, target_col="loan_approval", sensitive_col=None):
             le_target = LabelEncoder()
             y = le_target.fit_transform(y_raw.astype(str))
         else:
-            y = y_raw.values
+            y = y_raw.to_numpy()
     
     # Final safety check for 1D and Cleanliness
     y = np.ravel(y)
@@ -65,7 +65,7 @@ def preprocess_data(df, target_col="loan_approval", sensitive_col=None):
             imputer_sf = SimpleImputer(strategy="most_frequent")
             
         # Reshape for imputer
-        sf_reshaped = sf_raw.values.reshape(-1, 1)
+        sf_reshaped = sf_raw.to_numpy().reshape(-1, 1)
         sf_imputed = imputer_sf.fit_transform(sf_reshaped)
         
         # Flatten back to original series shape
