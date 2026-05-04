@@ -38,8 +38,7 @@ class LoanExplainabilityAnalyzer:
     """
 
     FEATURE_NAMES = [
-        "age", "income", "gender_enc", "education_enc",
-        "employment_enc", "loan_amount", "credit_score",
+        "age", "gender", "income", "credit_score", "loan_amount"
     ]
 
     def __init__(
@@ -71,16 +70,31 @@ class LoanExplainabilityAnalyzer:
         self.y_test: Optional[pd.Series] = None
         self.shap_values: Optional[np.ndarray] = None
 
+    def _generate_artifacts(self):
+        logger.info("Artifacts not found. Generating mock artifacts from data/loan_data.csv...")
+        import pandas as pd
+        import pickle
+        from utils.preprocessing import preprocess_data
+        from utils.training import train_model
+        
+        self.model_path.parent.mkdir(parents=True, exist_ok=True)
+        df = pd.read_csv("data/loan_data.csv")
+        X, y, _, _, sf_raw = preprocess_data(df, target_col="loan_approval", sensitive_col="gender")
+        model, metrics, X_test, y_test, y_pred, X_train, y_train, sf_train, sf_test = train_model(X, y, sensitive_features=sf_raw, model_type="Random Forest")
+        
+        with open(self.model_path, "wb") as f:
+            pickle.dump(model, f)
+        
+        X_test.to_csv(self.x_test_path, index=False)
+        pd.Series(y_test, name="loan_approval").to_csv(self.y_test_path, index=False)
+        logger.info("Mock artifacts generated successfully.")
+
     def load_artifacts(self) -> None:
         """Loads the saved model and test datasets into memory."""
         logger.info("Loading artifacts...")
         
-        if not self.model_path.exists():
-            raise FileNotFoundError(f"Model file not found at {self.model_path}")
-        if not self.x_test_path.exists():
-            raise FileNotFoundError(f"Test data features not found at {self.x_test_path}")
-        if not self.y_test_path.exists():
-            raise FileNotFoundError(f"Test data labels not found at {self.y_test_path}")
+        if not self.model_path.exists() or not self.x_test_path.exists() or not self.y_test_path.exists():
+            self._generate_artifacts()
 
         try:
             with open(self.model_path, "rb") as f:
@@ -104,9 +118,14 @@ class LoanExplainabilityAnalyzer:
         explainer = shap.TreeExplainer(self.model)
         shap_vals = explainer.shap_values(self.x_test)
 
-        # Handle binary classification lists vs arrays
+        # Handle binary classification lists vs arrays vs 3D arrays
         if isinstance(shap_vals, list):
-            self.shap_values = shap_vals[1]
+            if len(shap_vals) > 1:
+                self.shap_values = shap_vals[1]
+            else:
+                self.shap_values = shap_vals[0]
+        elif len(shap_vals.shape) == 3:
+            self.shap_values = shap_vals[:, :, 1]
         else:
             self.shap_values = shap_vals
 
@@ -193,10 +212,10 @@ class LoanExplainabilityAnalyzer:
         corr = self.x_test.corr(method="pearson")
         logger.info("\n--- Pearson Correlation Matrix ---\n%s", corr.round(3).to_string())
 
-        # Check proxy risk against sensitive group (e.g., gender_enc)
-        if "gender_enc" in corr.columns:
-            gender_corr = corr["gender_enc"].drop("gender_enc").abs().sort_values(ascending=False)
-            logger.info("\nFeatures correlated with 'gender_enc' (Proxy Risk Check):")
+        # Check proxy risk against sensitive group (e.g., gender)
+        if "gender" in corr.columns:
+            gender_corr = corr["gender"].drop("gender").abs().sort_values(ascending=False)
+            logger.info("\nFeatures correlated with 'gender' (Proxy Risk Check):")
             for feat, val in gender_corr.items():
                 flag = " ⚠ PROXY RISK" if val > 0.15 else ""
                 logger.info(f"  {feat:<20} |r| = {val:.4f}{flag}")
