@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "C:\\Users\\praka\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe",
+    "python.analysis.extraPaths": [
+        "./utils"
+    ]
+}
